@@ -14,7 +14,7 @@ from livekit import rtc
 from livekit.protocol.agent_pb import agent_session as agent_pb
 
 from .. import llm, utils
-from .._proto import _chat_item_to_proto, _session_usage_to_proto
+from .._proto import encode_chat_item, encode_session_usage
 from ..llm import (
     AgentConfigUpdate,
     AgentHandoff,
@@ -242,7 +242,6 @@ _USER_STATE_MAP: dict[UserState, agent_pb.UserState] = {
     "away": agent_pb.US_AWAY,
 }
 
-
 _TOOL_CALL_STATUS_MAP: dict[str, agent_pb.ToolCallStatus] = {
     "done": agent_pb.TC_DONE,
     "error": agent_pb.TC_ERROR,
@@ -425,7 +424,7 @@ class SessionHost:
             ChatMessage | FunctionCall | FunctionCallOutput | AgentHandoff | AgentConfigUpdate,
         ):
             return
-        chat_item = _chat_item_to_proto(event.item)
+        chat_item = encode_chat_item(event.item)
         self._send_event(
             agent_pb.AgentSessionEvent(
                 conversation_item_added=agent_pb.AgentSessionEvent.ConversationItemAdded(
@@ -580,7 +579,7 @@ class SessionHost:
         self._send_event(
             agent_pb.AgentSessionEvent(
                 session_usage_updated=agent_pb.AgentSessionEvent.SessionUsageUpdated(
-                    usage=_session_usage_to_proto(event.usage),
+                    usage=encode_session_usage(event.usage),
                 )
             )
         )
@@ -630,7 +629,7 @@ class SessionHost:
             await self._transport.send_message(resp)
 
         elif req.HasField("get_chat_history"):
-            items = [_chat_item_to_proto(item) for item in self._session.history.items]
+            items = [encode_chat_item(item) for item in self._session.history.items]
             resp = agent_pb.AgentSessionMessage(
                 response=agent_pb.SessionResponse(
                     request_id=req.request_id,
@@ -643,7 +642,7 @@ class SessionHost:
 
         elif req.HasField("get_agent_info"):
             agent = self._session.current_agent
-            items = [_chat_item_to_proto(item) for item in agent.chat_ctx.items]
+            items = [encode_chat_item(item) for item in agent.chat_ctx.items]
             # collapse modality variants for the report; audio-first matches the
             # update_instructions default for voice sessions
             agent_instructions = (
@@ -679,7 +678,7 @@ class SessionHost:
                 try:
                     result: RunResult[None] = self._session.run(user_input=text)
                     await result
-                    items_list = [_chat_item_to_proto(ev.item) for ev in result.events]
+                    items_list = [encode_chat_item(ev.item) for ev in result.events]
                 except Exception as e:
                     error = str(e)
 
@@ -766,7 +765,7 @@ class SessionHost:
                 response=agent_pb.SessionResponse(
                     request_id=req.request_id,
                     get_session_usage=agent_pb.SessionResponse.GetSessionUsageResponse(
-                        usage=_session_usage_to_proto(self._session.usage),
+                        usage=encode_session_usage(self._session.usage),
                         created_at=created_at,
                     ),
                 )

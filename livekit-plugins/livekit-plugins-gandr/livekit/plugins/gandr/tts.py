@@ -44,6 +44,7 @@ from livekit.agents import (
     tts,
     utils,
 )
+from livekit.agents.utils import aio
 from livekit.agents.types import DEFAULT_API_CONNECT_OPTIONS
 
 DEFAULT_BASE = "https://tts.gandr.ai"
@@ -193,11 +194,20 @@ class GandrTTS(tts.TTS):
     def _prewarm_soon(self) -> None:
         """Fire prewarm without blocking, from sync code, whether or not
         a loop is already running."""
+        if self._prewarm_task is not None and not self._prewarm_task.done():
+            return  # a prewarm is already in flight
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return  # constructed before the loop; synthesize() covers it
         self._prewarm_task = loop.create_task(self._prewarm_async())
+
+    async def aclose(self) -> None:
+        """Shut down the plugin, cancelling any in-flight prewarm so no
+        task outlives the object."""
+        if self._prewarm_task is not None:
+            await aio.cancel_and_wait(self._prewarm_task)
+            self._prewarm_task = None
 
     def synthesize(
         self,
